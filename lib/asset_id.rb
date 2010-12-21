@@ -42,6 +42,12 @@ module AssetID
       File.join File.dirname(path), "#{File.basename(path, File.extname(path))}-id-#{d}#{File.extname(path)}"
     end
     
+    def self.original_path(path)
+      path = File.join path_prefix, path unless path =~ /#{path_prefix}/
+      path = path.gsub(path_prefix, '')
+      File.join File.dirname(path), "#{File.basename(path, File.extname(path))}#{File.extname(path)}"
+    end
+    
   end
   
   class S3 < AssetID::Base
@@ -89,6 +95,10 @@ module AssetID
       super(path)
     end
     
+    def self.original_path(path)
+      super(path)
+    end
+    
     def self.upload(options={})
       connect_to_s3
       assets.each do |asset|
@@ -108,6 +118,14 @@ module AssetID
         end
         
         puts "asset_id: headers: #{headers.inspect}" if options[:debug]
+        
+        # Store object without asset-id as well for css stylesheets
+        AWS::S3::S3Object.store(
+          original_path(asset),
+          data,
+          s3_bucket,
+          headers
+        ) unless options[:dry_run]
         
         AWS::S3::S3Object.store(
           fingerprint(asset),
