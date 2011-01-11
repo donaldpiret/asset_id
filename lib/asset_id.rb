@@ -2,6 +2,9 @@ require 'digest/md5'
 require 'mime/types'
 require 'aws/s3'
 require 'time'
+require 'digest/sha1'
+require 'net/https'
+require 'base64'
 
 module AssetID
   
@@ -37,7 +40,7 @@ module AssetID
     
     def self.fingerprint(path)
       path = File.join path_prefix, path unless path =~ /#{path_prefix}/
-      d = Digest::MD5.hexdigest(File.read(path))
+      d = Digest::MD5.file(path).hexdigest
       path = path.gsub(path_prefix, '')
       File.join File.dirname(path), "#{File.basename(path, File.extname(path))}-id-#{d}#{File.extname(path)}"
     end
@@ -111,7 +114,7 @@ module AssetID
         }.merge(cache_headers)
         
         if gzip_types.include? mime_type
-          data = `gzip -c #{asset}`
+          data = `gzip -c "#{asset}"`
           headers.merge!(gzip_headers)
         else
           data = File.read(asset)
@@ -134,6 +137,30 @@ module AssetID
           headers
         ) unless options[:dry_run]
       end
+    end
+    
+    def self.invalidate
+      connect_to_s3
+      paths = ""
+      assets.each do |asset|
+        paths += "<Path>#{fingerprint(asset)}</Path>"
+        paths += "<Path>#{fingerprint(asset, false)}</Path>"
+      end
+      digest = OpenSSL::Digest.new('sha1')
+      digest = OpenSSL::HMAC.digest(digest, s3_config['secret_access_key'], date = Time.now.utc.strftime("%a, %d %b %Y %H:%M:%S %Z"))
+      uri = URI.parse("https://cloudfront.amazonaws.com/2010-11-01/distribution/#{s3_config['cloudfront_distribution_id']}/invalidation")
+      req = Net::HTTP::Post.new(uri.path)
+      req.initialize_http_header({
+        'x-amz-date' => date,
+        'Content-Type' => 'text/xml',
+        'Authorization' => "AWS %s:%s" % [s3_config['access_key_id'], Base64.encode64(digest)]
+      })
+      req.body = "<InvalidationBatch>#{paths}<CallerReference>asset_id_#{Time.now.utc.to_i}</CallerReference></InvalidationBatch>"
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+      res = http.request(req)
+      puts res.code == '201' ? 'Assets Invalidated' : "Failed #{res.code}"
     end
     
   end
