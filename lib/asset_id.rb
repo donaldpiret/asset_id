@@ -67,7 +67,7 @@ module AssetID
     end
     
     def self.s3_config
-      @@config ||= YAML.load_file(File.join(Rails.root, "config/asset_id.yml"))[Rails.env] rescue nil || {}
+      @@config ||= YAML.load_file(File.join(Rails.root, "config/amazon_s3.yml"))[Rails.env] rescue nil || {}
     end
     
     def self.connect_to_s3
@@ -139,11 +139,12 @@ module AssetID
       end
     end
     
-    def self.invalidate
+    def self.invalidate(options={})
       connect_to_s3
       paths = ""
       assets.each do |asset|
         paths += "<Path>#{original_path(asset)}</Path>"
+        paths += "<Path>#{fingerprint(asset)}</Path>" unless options[:original_only]
       end
       digest = OpenSSL::Digest.new('sha1')
       digest = OpenSSL::HMAC.digest(digest, s3_config['secret_access_key'], date = Time.now.utc.strftime("%a, %d %b %Y %H:%M:%S %Z"))
