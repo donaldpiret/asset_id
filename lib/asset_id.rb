@@ -143,8 +143,7 @@ module AssetID
       connect_to_s3
       paths = ""
       assets.each do |asset|
-        paths += "<Path>#{fingerprint(asset)}</Path>"
-        paths += "<Path>#{fingerprint(asset, false)}</Path>"
+        paths += "<Path>#{original_path(asset)}</Path>"
       end
       digest = OpenSSL::Digest.new('sha1')
       digest = OpenSSL::HMAC.digest(digest, s3_config['secret_access_key'], date = Time.now.utc.strftime("%a, %d %b %Y %H:%M:%S %Z"))
